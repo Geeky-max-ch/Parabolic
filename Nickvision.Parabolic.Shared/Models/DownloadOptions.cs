@@ -3,6 +3,7 @@ using Nickvision.Desktop.Keyring;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace Nickvision.Parabolic.Shared.Models;
 
@@ -64,7 +65,7 @@ public class DownloadOptions
 
         set
         {
-            field = value.Length <= 255 - _maxDotExtensionLength ? value : value.Substring(0, 255 - _maxDotExtensionLength);
+            field = TruncateUtf8(value, 255 - _maxDotExtensionLength);
             EnsurePathSize();
         }
     }
@@ -77,18 +78,42 @@ public class DownloadOptions
         }
         _isEnsuringPath = true;
         var maxPathSize = OperatingSystem.IsWindows() ? 259 : 4095;
-        if (Path.Combine(SaveFolder, SaveFilename).Length + _maxDotExtensionLength > maxPathSize)
+        var combinedLength = Path.Combine(SaveFolder, SaveFilename).Length + _maxDotExtensionLength;
+        if (combinedLength > maxPathSize)
         {
-            var excessLength = Path.Combine(SaveFolder, SaveFilename).Length + _maxDotExtensionLength - maxPathSize;
+            var excessLength = combinedLength - maxPathSize;
             if (SaveFilename.Length > excessLength)
             {
-                SaveFilename = SaveFilename.Substring(0, SaveFilename.Length - excessLength);
+                SaveFilename = TruncateUtf8(SaveFilename, SaveFilename.Length - excessLength);
             }
-            else if (SaveFolder.Length > excessLength)
+            else
             {
                 SaveFolder = UserDirectories.Downloads;
             }
         }
         _isEnsuringPath = false;
+    }
+
+    private static string TruncateUtf8(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return value;
+        }
+        if (Encoding.UTF8.GetByteCount(value) <= maxLength)
+        {
+            return value;
+        }
+
+        var result = new StringBuilder();
+        foreach (var rune in value.EnumerateRunes())
+        {
+            if (Encoding.UTF8.GetByteCount(result.ToString()) + Encoding.UTF8.GetByteCount(rune.ToString()) > maxLength)
+            {
+                break;
+            }
+            result.Append(rune);
+        }
+        return result.ToString().TrimEnd('.', ' ', '-');
     }
 }
